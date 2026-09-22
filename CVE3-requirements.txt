@@ -1,4 +1,4 @@
 flask==0.12.2
 jinja2==2.11.2
 urllib3==1.26.4
-requests==2.25.0
+requests==2.33.0
