@@ -1,29 +1,40 @@
 /**
- * User Account Lookup Service
+ * User & Report Export Service
  */
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const fs = require("fs");
+const path = require("path");
 
-const router = express.Router();
-const db = new sqlite3.Database(":memory:");
+const app = express();
+app.use(express.json());
 
-// GET /user?id=123
-router.get("/user", (req, res) => {
-  const userId = req.query.id;
+// 1. REFLECTED XSS (CWE-79)
+// CodeQL Flag: "Reflected cross-site scripting"
+// Untrusted input from req.query.name is sent directly to res.send() as HTML
+app.get("/welcome", (req, res) => {
+  const userName = req.query.name;
+  
+  // ⚠️ VULNERABILITY: Raw injection into HTML response
+  const htmlResponse = `<h1>Welcome back, ${userName}!</h1>`;
+  res.set("Content-Type", "text/html");
+  res.send(htmlResponse);
+});
 
-  // ⚠️ VULNERABILITY: Raw concatenation allows SQL Injection
-  // CodeQL will flag this taint flow: req.query.id -> query -> db.all()
-  const query = "SELECT id, username, email FROM users WHERE id = '" + userId + "'";
+// 2. PATH TRAVERSAL / ARBITRARY FILE ACCESS (CWE-22 / CWE-73)
+// CodeQL Flag: "Path traversal / Arbitrary file read"
+// Untrusted filename from req.query.file passes into fs.readFile()
+app.get("/download-report", (req, res) => {
+  const userFile = req.query.file;
+  
+  // ⚠️ VULNERABILITY: No sanitization against ../../ patterns
+  const filePath = path.join(__dirname, "reports", userFile);
 
-  db.all(query, [], (err, rows) => {
+  fs.readFile(filePath, "utf8", (err, data) => {
     if (err) {
-      return res.status(500).json({ error: "Database lookup failed" });
+      return res.status(404).send("File not found");
     }
-    if (!rows || rows.length === 0) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    res.json({ user: rows[0] });
+    res.send(data);
   });
 });
 
-module.exports = router;
+module.exports = app;
